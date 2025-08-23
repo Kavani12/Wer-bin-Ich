@@ -29,9 +29,6 @@
     .vote{display:flex;align-items:center;gap:8px;padding:10px;border:1px solid #2b3241;border-radius:12px;background:#0e121a}
     .small{font-size:12px}
     .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-    .countdown{font-size:20px;font-weight:bold;color:var(--warn);margin-top:10px;}
-    .progress{width:100%;height:16px;background:#2b3241;border-radius:8px;overflow:hidden;margin-top:6px;}
-    .progress-bar{height:100%;background:var(--accent);width:0%;transition:width 0.25s linear;}
   </style>
 </head>
 <body>
@@ -72,13 +69,13 @@
           <button id="btnUnready" class="ghost">Nicht bereit</button>
           <span id="readyInfo" class="muted" style="margin-left:8px"></span>
         </div>
-        <div id="countdown" class="countdown" style="display:none"></div>
-        <div class="progress" style="display:none" id="countdownBar"><div class="progress-bar" id="countdownFill"></div></div>
       </div>
       <div class="col">
         <label>Charakter-Pool (nur Host)</label>
-        <textarea id="pool" rows="10" placeholder="Jede Zeile ein Charakter"></textarea>
+        <textarea id="pool" rows="10" placeholder="Jede Zeile ein Charakter (z.B. Angela Merkel, Spongebob, Harry Potter)"></textarea>
         <div class="small muted" style="margin-top:6px">Wenn leer, wird ein Standard-Pool benutzt.</div>
+        <div class="sep"></div>
+        <button id="btnStart" disabled>Runde starten (Host)</button>
       </div>
     </div>
   </div>
@@ -86,8 +83,51 @@
   <!-- Vorschläge -->
   <div class="card" id="phaseSuggest" style="display:none">
     <div class="badge">Phase: Vorschläge</div>
-    Die Zielperson ist <b><span id="targetNameA" class="mono"></span></b>.
+    The Zielperson ist <b><span id="targetNameA" class="mono"></span></b>.
     <div class="muted small" style="margin:10px 0">Alle außer der Zielperson geben je <b>einen</b> Charakter-Vorschlag ab.</div>
+    <div class="row">
+      <div class="col">
+        <label>Dein Vorschlag</label>
+        <input id="suggestInput" placeholder="z.B. Sherlock Holmes" maxlength="40" />
+      </div>
+      <div class="col" style="align-self:end">
+        <button id="btnSuggest">Vorschlag senden</button>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div>
+      <div class="small muted">Eingegangene Vorschläge:</div>
+      <div id="suggestList" class="grid"></div>
+    </div>
+    <div class="sep"></div>
+    <div class="row">
+      <button id="btnLockSuggests" class="ghost">Host: Vorschlagsphase beenden</button>
+    </div>
+  </div>
+
+  <!-- Abstimmung -->
+  <div class="card" id="phaseVote" style="display:none">
+    <div class="badge">Phase: Abstimmung</div>
+    <h2>Abstimmen für <span id="targetNameB" class="mono"></span></h2>
+    <div class="grid" id="voteOptions"></div>
+    <div class="sep"></div>
+    <div class="small muted">Klicke auf deinen Favoriten. Zielperson darf (optional) auch mitvoten.</div>
+  </div>
+
+  <!-- Ergebnis -->
+  <div class="card" id="phaseResult" style="display:none">
+    <div class="badge">Ergebnis</div>
+    <h2><span id="winnerChar" class="mono"></span> gewinnt für <span id="targetNameC" class="mono"></span> 🎉</h2>
+    <div class="muted" id="voteBreakdown"></div>
+    <div class="sep"></div>
+    <div class="row">
+      <button id="btnNextRound">Nächste Runde</button>
+      <button id="btnBackLobby" class="ghost">Zurück zur Lobby</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="small muted">Backend: Firebase Realtime Database. Config ist unten im Script eingetragen. Für erste Tests kannst du die Realtime-Database-Regeln auf read/write = true setzen (später härter machen).</div>
   </div>
 </div>
 
@@ -95,6 +135,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
+// =========================
+// Firebase Config – korrigiert
+// =========================
 const firebaseConfig = {
   apiKey: "AIzaSyC03LUB1LEJYsmdwB9P61j571zIoHMDe0w",
   authDomain: "wer-bin-ich-c30fd.firebaseapp.com",
@@ -103,23 +146,32 @@ const firebaseConfig = {
   storageBucket: "wer-bin-ich-c30fd.appspot.com",
   messagingSenderId: "477823647225",
   appId: "1:477823647225:web:4885243f5323e2d3c95128"
+  // measurementId optional
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// ===== Helpers =====
+const $ = (s)=>document.querySelector(s);
 const byId = (id)=>document.getElementById(id);
 const uid = ()=> Math.random().toString(36).slice(2,10);
 
 let me = { id: uid(), name: "", room: "", isHost: false };
 let unsub = [];
 let playerMap = {};
-let countdownTimer = null;
 
-const DEFAULT_POOL = ["Angela Merkel","Harry Potter","Darth Vader","Spongebob","Sherlock Holmes"];
+const DEFAULT_POOL = [
+  "Angela Merkel","Harry Potter","Darth Vader","Spongebob","Sherlock Holmes",
+  "Taylor Swift","Batman","Asterix","Geralt von Riva","Mona Lisa","Albert Einstein",
+  "Elon Musk","Shrek","Spider-Man","Mario","Luigi","Indiana Jones","Katniss Everdeen"
+];
 
 function roomRef(room){ return db.ref(`rooms/${room}`); }
 function playersRef(room){ return db.ref(`rooms/${room}/players`); }
 function setState(room, patch){ return roomRef(room).update(patch); }
+function setPill(text){ byId('roomPill').textContent = text; }
+function cleanListeners(){ unsub.forEach(u=>u()); unsub=[]; }
 
 function setupPlayerMap(){
   if(!me.room) return;
@@ -128,16 +180,20 @@ function setupPlayerMap(){
 }
 function getPlayerName(id){ return playerMap?.[id]?.name || null; }
 
+// ===== Auth / Room =====
 async function hostGame(){
   me.name = byId('playerName').value.trim();
   me.room = (byId('roomId').value.trim() || makeRoomId()).toUpperCase();
   if(!me.name){ return alert('Bitte Namen eingeben.'); }
   me.isHost = true;
+
+  const rRef = roomRef(me.room);
   const now = Date.now();
-  await roomRef(me.room).set({ createdAt: now, hostId: me.id, state: 'lobby', round: 0, targetId: null });
+  await rRef.set({ createdAt: now, hostId: me.id, state: 'lobby', round: 0, targetId: null, pool: DEFAULT_POOL, suggestsLocked: false });
   await playersRef(me.room).child(me.id).set({ id: me.id, name: me.name, ready:false, joinedAt: now });
   enterLobby();
 }
+
 async function joinGame(){
   me.name = byId('playerName').value.trim();
   me.room = byId('roomId').value.trim().toUpperCase();
@@ -147,108 +203,196 @@ async function joinGame(){
   await playersRef(me.room).child(me.id).set({ id: me.id, name: me.name, ready:false, joinedAt: now });
   enterLobby();
 }
+
 function makeRoomId(){
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out=''; for(let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
+  let out='';
+  for(let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
   byId('roomId').value = out; return out;
 }
+
+// ===== UI Transitions =====
 function show(cardId){
-  ['authCard','lobbyCard','phaseSuggest'].forEach(id=> byId(id).style.display='none');
+  ['authCard','lobbyCard','phaseSuggest','phaseVote','phaseResult'].forEach(id=> byId(id).style.display='none');
   byId(cardId).style.display='block';
 }
 
 function enterLobby(){
   setupPlayerMap();
+  setPill(`Raum: ${me.room}`);
+  byId('isHostTag').textContent = me.isHost ? 'Du bist Host' : 'Du bist Spieler';
   show('lobbyCard');
 
-  const off1 = playersRef(me.room).on('value', async snap => {
+  const off1 = playersRef(me.room).on('value', snap => {
     const players = snap.val()||{};
     renderPlayers(players);
     const list = Object.values(players);
     const readyCount = list.filter(p=>p.ready).length;
     byId('readyInfo').textContent = `${readyCount}/${list.length} bereit`;
-
-    const rSnap = await roomRef(me.room).get();
-    const data = rSnap.val()||{};
-    const everyoneReady = list.length>=3 && readyCount===list.length;
-    if(me.isHost){
-      if(everyoneReady && data.state==='lobby'){
-        await roomRef(me.room).update({ state:'countdown', countdownStart: Date.now(), countdownMs: 5000 });
-      }
-      if(!everyoneReady && data.state==='countdown'){
-        await roomRef(me.room).update({ state:'lobby', countdownStart: null, countdownMs: null });
-      }
-    }
+    byId('btnStart').disabled = !(me.isHost && list.length>=3 && readyCount===list.length);
   });
   unsub.push(()=>playersRef(me.room).off('value', off1));
 
-  const off2 = roomRef(me.room).on('value', async snap => {
+  const off2 = roomRef(me.room).on('value', snap => {
     const data = snap.val(); if(!data) return;
-    if(data.state==='countdown') handleCountdownUI(data); else clearCountdownUI();
+    if(me.isHost){ byId('pool').value = (data.pool||[]).join('\n'); }
     if(data.state==='suggest') enterSuggestPhase(data);
-    if(me.isHost && data.state==='countdown' && data.countdownStart && data.countdownMs){
-      const remaining = data.countdownStart + data.countdownMs - Date.now();
-      if(remaining <= 0){
-        await roomRef(me.room).update({ countdownStart: null, countdownMs: null });
-        await startRound();
-      }
-    }
+    else if(data.state==='vote') enterVotePhase(data);
+    else if(data.state==='result') enterResultPhase(data);
+    else if(data.state==='lobby') show('lobbyCard');
   });
   unsub.push(()=>roomRef(me.room).off('value', off2));
 }
 
-function handleCountdownUI(data){
-  byId('countdown').style.display='block';
-  byId('countdownBar').style.display='block';
-  const update = ()=>{
-    const end = (data.countdownStart||0) + (data.countdownMs||0);
-    const ms = Math.max(0, end - Date.now());
-    const sec = Math.ceil(ms/1000);
-    byId('countdown').textContent = `Spiel startet in ${sec}…`;
-    const total = data.countdownMs||5000;
-    const percent = Math.min(100, (1 - ms/total)*100);
-    byId('countdownFill').style.width = percent + \"%\";
-  };
-  update();
-  clearInterval(countdownTimer);
-  countdownTimer = setInterval(update, 200);
-}
-function clearCountdownUI(){
-  clearInterval(countdownTimer); countdownTimer=null;
-  byId('countdown').style.display='none';
-  byId('countdownBar').style.display='none';
-  byId('countdownFill').style.width = \"0%\";
-}
-
 function renderPlayers(players){
   const el = byId('players'); el.innerHTML='';
-  Object.values(players).forEach(p=>{
+  Object.values(players).sort((a,b)=>a.joinedAt-b.joinedAt).forEach(p=>{
     const div=document.createElement('div');
     div.className='player';
-    div.innerHTML = `<div><b>${p.name}</b></div><div class=\"small muted\">${p.ready?'bereit ✔':'wartet…'}</div>`;
+    div.innerHTML = `<div><b>${escapeHtml(p.name)}</b></div>
+      <div class="small muted">${p.id===me.id? 'Das bist du' : 'Mitspieler'}</div>
+      <div style="margin-top:6px"><span class="badge">${p.ready?'bereit ✔':'wartet…'}</span></div>`;
     el.appendChild(div);
   });
 }
 
+function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
+
+// ===== Lobby Actions =====
 byId('btnReady').onclick = ()=> playersRef(me.room).child(me.id).update({ready:true});
 byId('btnUnready').onclick = ()=> playersRef(me.room).child(me.id).update({ready:false});
+byId('btnStart').onclick = async ()=>{
+  if(me.isHost){
+    const lines = byId('pool').value.split('\n').map(x=>x.trim()).filter(Boolean);
+    const pool = lines.length? lines : DEFAULT_POOL;
+    await setState(me.room, { pool });
+  }
+  await startRound();
+};
 
 async function startRound(){
-  if(!me.isHost) return;
   const pSnap = await playersRef(me.room).get();
   const players = Object.values(pSnap.val()||{});
-  if(players.length<3) return;
-  const target = players[Math.floor(Math.random()*players.length)];
-  await setState(me.room, { state:'suggest', targetId: target.id, countdownStart:null, countdownMs:null });
-}
-function enterSuggestPhase(data){
-  show('phaseSuggest');
-  byId('targetNameA').textContent = getPlayerName(data.targetId)||'?';
+  if(players.length<3) return alert('Mindestens 3 Spieler.');
+  const readyPlayers = players.filter(p=>p.ready);
+  const target = readyPlayers[Math.floor(Math.random()*readyPlayers.length)];
+
+  const updates = {};
+  updates[`rooms/${me.room}/round`] = firebase.database.ServerValue.increment(1);
+  updates[`rooms/${me.room}/state`] = 'suggest';
+  updates[`rooms/${me.room}/targetId`] = target.id;
+  updates[`rooms/${me.room}/suggestsLocked`] = false;
+  updates[`rooms/${me.room}/suggests`] = null;
+  updates[`rooms/${me.room}/votes`] = null;
+  await db.ref().update(updates);
 }
 
+// ===== Suggest Phase =====
+function enterSuggestPhase(data){
+  show('phaseSuggest');
+  const target = data.targetId;
+  const targetName = getPlayerName(target);
+  byId('targetNameA').textContent = targetName||'(unbekannt)';
+
+  const sRef = roomRef(me.room).child('suggests');
+  const off = sRef.on('value', snap=>{ renderSuggestList(snap.val()||{}, target); });
+  unsub.push(()=>sRef.off('value', off));
+
+  byId('btnSuggest').disabled = false;
+  byId('suggestInput').value = '';
+
+  byId('btnSuggest').onclick = async ()=>{
+    const val = byId('suggestInput').value.trim();
+    if(!val) return alert('Bitte einen Vorschlag eingeben.');
+    if(me.id===target) return alert('Die Zielperson darf keinen Vorschlag abgeben.');
+    const key = me.id;
+    await roomRef(me.room).child('suggests').child(key).set({ by: me.id, text: val, at: Date.now() });
+    byId('btnSuggest').disabled = true;
+  };
+
+  byId('btnLockSuggests').style.display = me.isHost? 'inline-flex':'none';
+  byId('btnLockSuggests').onclick = async ()=>{ await setState(me.room, { suggestsLocked: true, state: 'vote' }); };
+}
+
+function renderSuggestList(obj, targetId){
+  const el = byId('suggestList'); el.innerHTML = '';
+  const items = Object.values(obj);
+  if(items.length===0){ el.innerHTML = '<div class="muted small">Noch keine Vorschläge…</div>'; return; }
+  items.sort((a,b)=>a.at-b.at).forEach(s=>{
+    const div = document.createElement('div');
+    div.className='player';
+    const byName = getPlayerName(s.by)||'?';
+    div.innerHTML = `<div><b>${escapeHtml(s.text)}</b></div><div class="small muted">von ${escapeHtml(byName)}</div>`;
+    el.appendChild(div);
+  });
+}
+
+// ===== Vote Phase =====
+function enterVotePhase(data){
+  show('phaseVote');
+  const target = data.targetId;
+  byId('targetNameB').textContent = getPlayerName(target)||'(unbekannt)';
+  roomRef(me.room).child('suggests').get().then(snap=>{ renderVoteOptions(snap.val()||{}); });
+}
+
+function renderVoteOptions(obj){
+  const el = byId('voteOptions'); el.innerHTML='';
+  const entries = Object.values(obj);
+  if(entries.length===0){ el.innerHTML = '<div class="muted small">Keine Vorschläge vorhanden.</div>'; return; }
+
+  entries.forEach((s, idx)=>{
+    const row = document.createElement('div');
+    row.className='vote';
+    row.innerHTML = `<div style="flex:1"><b>${escapeHtml(s.text)}</b><div class=\"small muted\">von ${escapeHtml(getPlayerName(s.by)||'?')}</div></div>`;
+    const btn = document.createElement('button');
+    btn.textContent='Stimme geben';
+    btn.onclick = async ()=>{
+      await roomRef(me.room).child('votes').child(me.id).set({ choiceIdx: idx, at: Date.now() });
+      [...el.querySelectorAll('button')].forEach(b=>b.disabled=true);
+    };
+    row.appendChild(btn);
+    el.appendChild(row);
+  });
+
+  const off = playersRef(me.room).on('value', async snap=>{
+    const players = Object.values(snap.val()||{});
+    const vSnap = await roomRef(me.room).child('votes').get();
+    const votes = vSnap.val()||{};
+    if(Object.keys(votes).length===players.length){ tallyAndFinish(entries); }
+  });
+  unsub.push(()=>playersRef(me.room).off('value', off));
+}
+
+async function tallyAndFinish(entries){
+  const vSnap = await roomRef(me.room).child('votes').get();
+  const votes = Object.values(vSnap.val()||{});
+  const counts = new Array(entries.length).fill(0);
+  votes.forEach(v=>{ if(v && Number.isInteger(v.choiceIdx)) counts[v.choiceIdx]++; });
+  let winIdx = 0, max=-1;
+  counts.forEach((c,i)=>{ if(c>max){ max=c; winIdx=i; } });
+  await setState(me.room, { state:'result', result:{ winnerIdx: winIdx, counts, entries } });
+}
+
+// ===== Result =====
+function enterResultPhase(data){
+  show('phaseResult');
+  const res = data.result||{};
+  const entries = res.entries||[];
+  const win = entries[res.winnerIdx] || { text:'(keiner)', by:'' };
+  byId('winnerChar').textContent = win.text;
+  byId('targetNameC').textContent = getPlayerName(data.targetId)||'?';
+  const breakdown = (res.counts||[]).map((c,i)=>`<div>• ${escapeHtml(entries[i]?.text||'?')} – <b>${c}</b> Stimmen</div>`).join('');
+  byId('voteBreakdown').innerHTML = breakdown;
+  byId('btnNextRound').onclick = ()=> startRound();
+  byId('btnBackLobby').onclick = ()=> setState(me.room, { state:'lobby' });
+}
+
+// ===== Wire =====
 byId('btnHost').onclick = hostGame;
 byId('btnJoin').onclick = joinGame;
+
+// basic error surfacing
+window.addEventListener('error', (e)=>{ console.warn('JS Error:', e.message); });
 </script>
 </body>
 </html>
-
