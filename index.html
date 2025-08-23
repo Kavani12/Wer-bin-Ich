@@ -228,6 +228,8 @@ function show(cardId){
 }
 
 function enterLobby(){
+  setupPlayerMap();
+
   setPill(`Raum: ${me.room}`);
   byId('isHostTag').textContent = me.isHost ? 'Du bist Host' : 'Du bist Spieler';
   show('lobbyCard');
@@ -440,8 +442,8 @@ function getPlayerName(id){
 
 // Improve getPlayerName: maintain map
 let playerMap = {};
-playersRef
 function setupPlayerMap(){
+
   if(!me.room) return;
   const off = playersRef(me.room).on('value', snap=>{
     playerMap = snap.val()||{};
@@ -454,6 +456,11 @@ function getPlayerName(id){ return playerMap?.[id]?.name || null; }
 // ===== Wire buttons =====
 byId('btnHost').onclick = hostGame;
 byId('btnJoin').onclick = joinGame;
+
+// Basic runtime error surfacing for buttons (helps, falls Firebase fehlt)
+window.addEventListener('error', (e)=>{
+  console.warn('JS Error:', e.message);
+});
 
 // update map on page load if room set
 setupPlayerMap();
