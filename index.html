@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Wer bin ich? – Multiplayer</title>
   <style>
-    :root {
-      --bg: #0f1115; --card:#151922; --muted:#a8b0bf; --accent:#7c5cff;
-      --ok:#3ddc97; --warn:#ffb703; --danger:#ef476f;
-    }
+    :root { --bg:#0f1115; --card:#151922; --muted:#a8b0bf; --accent:#7c5cff; --ok:#3ddc97; --warn:#ffb703; --danger:#ef476f; }
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;background:var(--bg);color:#e7ecf5;}
     .wrap{max-width:980px;margin:0 auto;padding:24px;}
@@ -24,16 +21,10 @@
     .pill{display:inline-flex;align-items:center;gap:6px;background:#0e121a;border:1px solid #263043;padding:6px 10px;border-radius:999px;font-size:13px;color:#c6ccda}
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
     .player{padding:10px;border:1px solid #2b3241;border-radius:12px;background:#0e121a}
-    .tag{font-size:12px;color:#9fb0ff}
     .state{margin-top:8px}
     .hint{font-size:13px;color:var(--muted)}
     .sep{height:1px;background:#222a36;margin:16px 0}
     .badge{font-size:12px;padding:4px 8px;border-radius:999px;background:#1c2331;border:1px solid #2b3241;color:#cfd7ea}
-    .success{color:var(--ok)}
-    .warn{color:var(--warn)}
-    .danger{color:var(--danger)}
-    .center{display:flex;align-items:center;justify-content:center}
-    .titlebar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
     .muted{color:var(--muted)}
     .vote{display:flex;align-items:center;gap:8px;padding:10px;border:1px solid #2b3241;border-radius:12px;background:#0e121a}
     .small{font-size:12px}
@@ -47,6 +38,7 @@
     <div id="roomPill" class="pill">Kein Raum</div>
   </div>
 
+  <!-- Auth -->
   <div class="card" id="authCard">
     <div class="row">
       <div class="col">
@@ -62,9 +54,10 @@
       <button id="btnHost">Spiel hosten</button>
       <button id="btnJoin" class="ghost">Beitreten</button>
     </div>
-    <div class="hint" style="margin-top:8px">Tipp: Verwende eine kurze Raum-ID und teile sie mit deinen Freund:innen.</div>
+    <div class="hint" style="margin-top:8px">Tipp: Kurze Raum-ID wählen und teilen.</div>
   </div>
 
+  <!-- Lobby -->
   <div class="card" id="lobbyCard" style="display:none">
     <div class="row">
       <div class="col">
@@ -87,10 +80,11 @@
     </div>
   </div>
 
+  <!-- Vorschläge -->
   <div class="card" id="phaseSuggest" style="display:none">
     <div class="badge">Phase: Vorschläge</div>
-    <h2>Vorschläge für <span id="targetNameA" class="mono"></span></h2>
-    <div class="muted small" style="margin-bottom:10px">Alle außer der Zielperson geben je <b>einen</b> Charakter-Vorschlag ab.</div>
+    The Zielperson ist <b><span id="targetNameA" class="mono"></span></b>.
+    <div class="muted small" style="margin:10px 0">Alle außer der Zielperson geben je <b>einen</b> Charakter-Vorschlag ab.</div>
     <div class="row">
       <div class="col">
         <label>Dein Vorschlag</label>
@@ -111,6 +105,7 @@
     </div>
   </div>
 
+  <!-- Abstimmung -->
   <div class="card" id="phaseVote" style="display:none">
     <div class="badge">Phase: Abstimmung</div>
     <h2>Abstimmen für <span id="targetNameB" class="mono"></span></h2>
@@ -119,6 +114,7 @@
     <div class="small muted">Klicke auf deinen Favoriten. Zielperson darf (optional) auch mitvoten.</div>
   </div>
 
+  <!-- Ergebnis -->
   <div class="card" id="phaseResult" style="display:none">
     <div class="badge">Ergebnis</div>
     <h2><span id="winnerChar" class="mono"></span> gewinnt für <span id="targetNameC" class="mono"></span> 🎉</h2>
@@ -131,7 +127,7 @@
   </div>
 
   <div class="card" style="margin-top:16px">
-    <div class="small muted">Backend: Firebase Realtime Database. Trage deine Config unten ein und hoste die Datei statisch (z.B. GitHub Pages, Netlify, Vercel).<br>Siehe Kommentar im Code: <span class="mono">// TODO: Firebase Config</span></div>
+    <div class="small muted">Backend: Firebase Realtime Database. Config ist unten im Script eingetragen. Für erste Tests kannst du die Realtime-Database-Regeln auf read/write = true setzen (später härter machen).</div>
   </div>
 </div>
 
@@ -140,30 +136,30 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 // =========================
-// 🔧 TODO: Firebase Config
+// Firebase Config – korrigiert
 // =========================
-// Erstelle ein Firebase-Projekt → Realtime Database (Modus: test/read+write, später Regeln anpassen)
-// Kopiere hier deine Web-App Config rein:
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyC03LUB1LEJYsmdwB9P61j571zIoHMDe0w",
+  authDomain: "wer-bin-ich-c30fd.firebaseapp.com",
+  databaseURL: "https://wer-bin-ich-c30fd-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "wer-bin-ich-c30fd",
+  storageBucket: "wer-bin-ich-c30fd.appspot.com",
+  messagingSenderId: "477823647225",
+  appId: "1:477823647225:web:4885243f5323e2d3c95128"
+  // measurementId optional
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 // ===== Helpers =====
-const $ = sel => document.querySelector(sel);
-const byId = id => document.getElementById(id);
-const uid = () => Math.random().toString(36).slice(2, 10);
+const $ = (s)=>document.querySelector(s);
+const byId = (id)=>document.getElementById(id);
+const uid = ()=> Math.random().toString(36).slice(2,10);
 
 let me = { id: uid(), name: "", room: "", isHost: false };
 let unsub = [];
+let playerMap = {};
 
 const DEFAULT_POOL = [
   "Angela Merkel","Harry Potter","Darth Vader","Spongebob","Sherlock Holmes",
@@ -173,12 +169,16 @@ const DEFAULT_POOL = [
 
 function roomRef(room){ return db.ref(`rooms/${room}`); }
 function playersRef(room){ return db.ref(`rooms/${room}/players`); }
-
 function setState(room, patch){ return roomRef(room).update(patch); }
-
 function setPill(text){ byId('roomPill').textContent = text; }
-
 function cleanListeners(){ unsub.forEach(u=>u()); unsub=[]; }
+
+function setupPlayerMap(){
+  if(!me.room) return;
+  const off = playersRef(me.room).on('value', snap=>{ playerMap = snap.val()||{}; });
+  unsub.push(()=>playersRef(me.room).off('value', off));
+}
+function getPlayerName(id){ return playerMap?.[id]?.name || null; }
 
 // ===== Auth / Room =====
 async function hostGame(){
@@ -189,15 +189,7 @@ async function hostGame(){
 
   const rRef = roomRef(me.room);
   const now = Date.now();
-  await rRef.set({
-    createdAt: now,
-    hostId: me.id,
-    state: 'lobby', // lobby | suggest | vote | result
-    round: 0,
-    targetId: null,
-    pool: DEFAULT_POOL,
-    suggestsLocked: false
-  });
+  await rRef.set({ createdAt: now, hostId: me.id, state: 'lobby', round: 0, targetId: null, pool: DEFAULT_POOL, suggestsLocked: false });
   await playersRef(me.room).child(me.id).set({ id: me.id, name: me.name, ready:false, joinedAt: now });
   enterLobby();
 }
@@ -208,7 +200,6 @@ async function joinGame(){
   if(!me.name || !me.room){ return alert('Name und Raum-ID nötig.'); }
   me.isHost = false;
   const now = Date.now();
-  // create room if not exists? no → user should host
   await playersRef(me.room).child(me.id).set({ id: me.id, name: me.name, ready:false, joinedAt: now });
   enterLobby();
 }
@@ -217,8 +208,7 @@ function makeRoomId(){
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let out='';
   for(let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
-  byId('roomId').value = out;
-  return out;
+  byId('roomId').value = out; return out;
 }
 
 // ===== UI Transitions =====
@@ -229,12 +219,10 @@ function show(cardId){
 
 function enterLobby(){
   setupPlayerMap();
-
   setPill(`Raum: ${me.room}`);
   byId('isHostTag').textContent = me.isHost ? 'Du bist Host' : 'Du bist Spieler';
   show('lobbyCard');
 
-  // live players list
   const off1 = playersRef(me.room).on('value', snap => {
     const players = snap.val()||{};
     renderPlayers(players);
@@ -245,12 +233,9 @@ function enterLobby(){
   });
   unsub.push(()=>playersRef(me.room).off('value', off1));
 
-  // room state listener
   const off2 = roomRef(me.room).on('value', snap => {
     const data = snap.val(); if(!data) return;
-    // sync pool UI for host
     if(me.isHost){ byId('pool').value = (data.pool||[]).join('\n'); }
-
     if(data.state==='suggest') enterSuggestPhase(data);
     else if(data.state==='vote') enterVotePhase(data);
     else if(data.state==='result') enterResultPhase(data);
@@ -266,7 +251,7 @@ function renderPlayers(players){
     div.className='player';
     div.innerHTML = `<div><b>${escapeHtml(p.name)}</b></div>
       <div class="small muted">${p.id===me.id? 'Das bist du' : 'Mitspieler'}</div>
-      <div style="margin-top:6px"><span class="badge" style="border-color:${p.ready?'#1f4739':'#47311f'};color:${p.ready?'#a8f0cf':'#f0d0a8'}">${p.ready?'bereit ✔':'wartet…'}</span></div>`;
+      <div style="margin-top:6px"><span class="badge">${p.ready?'bereit ✔':'wartet…'}</span></div>`;
     el.appendChild(div);
   });
 }
@@ -277,7 +262,6 @@ function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",
 byId('btnReady').onclick = ()=> playersRef(me.room).child(me.id).update({ready:true});
 byId('btnUnready').onclick = ()=> playersRef(me.room).child(me.id).update({ready:false});
 byId('btnStart').onclick = async ()=>{
-  // apply pool if host edited
   if(me.isHost){
     const lines = byId('pool').value.split('\n').map(x=>x.trim()).filter(Boolean);
     const pool = lines.length? lines : DEFAULT_POOL;
@@ -290,11 +274,9 @@ async function startRound(){
   const pSnap = await playersRef(me.room).get();
   const players = Object.values(pSnap.val()||{});
   if(players.length<3) return alert('Mindestens 3 Spieler.');
-  // pick random target among ready players
   const readyPlayers = players.filter(p=>p.ready);
   const target = readyPlayers[Math.floor(Math.random()*readyPlayers.length)];
 
-  // reset fields for new round
   const updates = {};
   updates[`rooms/${me.room}/round`] = firebase.database.ServerValue.increment(1);
   updates[`rooms/${me.room}/state`] = 'suggest';
@@ -312,11 +294,8 @@ function enterSuggestPhase(data){
   const targetName = getPlayerName(target);
   byId('targetNameA').textContent = targetName||'(unbekannt)';
 
-  // render list of suggestions live
   const sRef = roomRef(me.room).child('suggests');
-  const off = sRef.on('value', snap=>{
-    const obj = snap.val()||{}; renderSuggestList(obj, target);
-  });
+  const off = sRef.on('value', snap=>{ renderSuggestList(snap.val()||{}, target); });
   unsub.push(()=>sRef.off('value', off));
 
   byId('btnSuggest').disabled = false;
@@ -325,17 +304,14 @@ function enterSuggestPhase(data){
   byId('btnSuggest').onclick = async ()=>{
     const val = byId('suggestInput').value.trim();
     if(!val) return alert('Bitte einen Vorschlag eingeben.');
-    // target cannot submit
     if(me.id===target) return alert('Die Zielperson darf keinen Vorschlag abgeben.');
-    const key = me.id; // one per player
+    const key = me.id;
     await roomRef(me.room).child('suggests').child(key).set({ by: me.id, text: val, at: Date.now() });
     byId('btnSuggest').disabled = true;
   };
 
   byId('btnLockSuggests').style.display = me.isHost? 'inline-flex':'none';
-  byId('btnLockSuggests').onclick = async ()=>{
-    await setState(me.room, { suggestsLocked: true, state: 'vote' });
-  };
+  byId('btnLockSuggests').onclick = async ()=>{ await setState(me.room, { suggestsLocked: true, state: 'vote' }); };
 }
 
 function renderSuggestList(obj, targetId){
@@ -345,7 +321,7 @@ function renderSuggestList(obj, targetId){
   items.sort((a,b)=>a.at-b.at).forEach(s=>{
     const div = document.createElement('div');
     div.className='player';
-    const byName = getPlayerName(s.by)||'?' ;
+    const byName = getPlayerName(s.by)||'?';
     div.innerHTML = `<div><b>${escapeHtml(s.text)}</b></div><div class="small muted">von ${escapeHtml(byName)}</div>`;
     el.appendChild(div);
   });
@@ -356,12 +332,7 @@ function enterVotePhase(data){
   show('phaseVote');
   const target = data.targetId;
   byId('targetNameB').textContent = getPlayerName(target)||'(unbekannt)';
-
-  // read suggestions once
-  roomRef(me.room).child('suggests').get().then(snap=>{
-    const obj = snap.val()||{};
-    renderVoteOptions(obj);
-  });
+  roomRef(me.room).child('suggests').get().then(snap=>{ renderVoteOptions(snap.val()||{}); });
 }
 
 function renderVoteOptions(obj){
@@ -372,48 +343,37 @@ function renderVoteOptions(obj){
   entries.forEach((s, idx)=>{
     const row = document.createElement('div');
     row.className='vote';
-    row.innerHTML = `<div style="flex:1"><b>${escapeHtml(s.text)}</b><div class="small muted">von ${escapeHtml(getPlayerName(s.by)||'?')}</div></div>`;
+    row.innerHTML = `<div style="flex:1"><b>${escapeHtml(s.text)}</b><div class=\"small muted\">von ${escapeHtml(getPlayerName(s.by)||'?')}</div></div>`;
     const btn = document.createElement('button');
     btn.textContent='Stimme geben';
     btn.onclick = async ()=>{
       await roomRef(me.room).child('votes').child(me.id).set({ choiceIdx: idx, at: Date.now() });
-      // disable all buttons
       [...el.querySelectorAll('button')].forEach(b=>b.disabled=true);
     };
     row.appendChild(btn);
     el.appendChild(row);
   });
 
-  // live watch votes; when alle haben gevotet ⇒ tally
   const off = playersRef(me.room).on('value', async snap=>{
     const players = Object.values(snap.val()||{});
     const vSnap = await roomRef(me.room).child('votes').get();
     const votes = vSnap.val()||{};
-    const votedCount = Object.keys(votes).length;
-    const total = players.length; // inkl. Zielperson
-    if(votedCount===total){ tallyAndFinish(entries); }
+    if(Object.keys(votes).length===players.length){ tallyAndFinish(entries); }
   });
   unsub.push(()=>playersRef(me.room).off('value', off));
 }
 
 async function tallyAndFinish(entries){
-  // tally votes
   const vSnap = await roomRef(me.room).child('votes').get();
   const votes = Object.values(vSnap.val()||{});
   const counts = new Array(entries.length).fill(0);
   votes.forEach(v=>{ if(v && Number.isInteger(v.choiceIdx)) counts[v.choiceIdx]++; });
-  // pick max; tie-breaker: earliest suggestion
   let winIdx = 0, max=-1;
   counts.forEach((c,i)=>{ if(c>max){ max=c; winIdx=i; } });
-  const winner = entries[winIdx];
-
-  await setState(me.room, {
-    state:'result',
-    result:{ winnerIdx: winIdx, counts, entries }
-  });
+  await setState(me.room, { state:'result', result:{ winnerIdx: winIdx, counts, entries } });
 }
 
-// ===== Result Phase =====
+// ===== Result =====
 function enterResultPhase(data){
   show('phaseResult');
   const res = data.result||{};
@@ -421,49 +381,18 @@ function enterResultPhase(data){
   const win = entries[res.winnerIdx] || { text:'(keiner)', by:'' };
   byId('winnerChar').textContent = win.text;
   byId('targetNameC').textContent = getPlayerName(data.targetId)||'?';
-
   const breakdown = (res.counts||[]).map((c,i)=>`<div>• ${escapeHtml(entries[i]?.text||'?')} – <b>${c}</b> Stimmen</div>`).join('');
   byId('voteBreakdown').innerHTML = breakdown;
-
   byId('btnNextRound').onclick = ()=> startRound();
   byId('btnBackLobby').onclick = ()=> setState(me.room, { state:'lobby' });
 }
 
-function getPlayerName(id){
-  // read from cache in DOM list
-  // quick fetch each time (cheap):
-  // NOTE: in production, keep a local map in listeners
-  return byId('players')
-    .querySelectorAll('.player')
-    .length ?
-    Array.from(byId('players').querySelectorAll('.player'))
-      .map(div=>div.querySelector('b')?.textContent) && null : null;
-}
-
-// Improve getPlayerName: maintain map
-let playerMap = {};
-function setupPlayerMap(){
-
-  if(!me.room) return;
-  const off = playersRef(me.room).on('value', snap=>{
-    playerMap = snap.val()||{};
-  });
-  unsub.push(()=>playersRef(me.room).off('value', off));
-}
-
-function getPlayerName(id){ return playerMap?.[id]?.name || null; }
-
-// ===== Wire buttons =====
+// ===== Wire =====
 byId('btnHost').onclick = hostGame;
 byId('btnJoin').onclick = joinGame;
 
-// Basic runtime error surfacing for buttons (helps, falls Firebase fehlt)
-window.addEventListener('error', (e)=>{
-  console.warn('JS Error:', e.message);
-});
-
-// update map on page load if room set
-setupPlayerMap();
+// basic error surfacing
+window.addEventListener('error', (e)=>{ console.warn('JS Error:', e.message); });
 </script>
 </body>
 </html>
