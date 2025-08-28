@@ -43,6 +43,9 @@ function setupPlayerMap(){
 function getPlayerName(id){ return playerMap?.[id]?.name || null; }
 
 // ===== Auth / Room =====
+byId('btnHost').onclick = hostGame;
+byId('btnJoin').onclick = joinGame;
+
 async function hostGame(){
   me.name = byId('playerName').value.trim();
   me.room = (byId('roomId').value.trim() || makeRoomId()).toUpperCase();
@@ -53,8 +56,11 @@ async function hostGame(){
   const now = Date.now();
   await rRef.set({
     createdAt: now, hostId: me.id, state: 'lobby',
-    round: 0, targetId: null, pool: DEFAULT_POOL, suggestsLocked: false,
-    queue: null, queuePos: null
+    round: 0, targetId: null, pool: DEFAULT_POOL,
+    suggestsLocked: false,
+    queue: null, queuePos: null,
+    assignments: null,        // <-- NEU: ZielId -> Gewinner-Charakter
+    endVotes: null            // <-- NEU: wer hat „Spiel beenden“ gedrückt
   });
   await playersRef(me.room).child(me.id).set({ id: me.id, name: me.name, ready:false, joinedAt: now });
   enterLobby();
@@ -78,7 +84,8 @@ function makeRoomId(){
 
 // ===== UI Transitions =====
 function show(cardId){
-  ['authCard','lobbyCard','phaseSuggest','phaseVote','phaseResult'].forEach(id=> byId(id).style.display='none');
+  ['authCard','lobbyCard','phaseSuggest','phaseVote','phaseResult','phaseReveal']
+    .forEach(id=> byId(id).style.display='none');
   byId(cardId).style.display='block';
 }
 
@@ -104,6 +111,7 @@ function enterLobby(){
     if(data.state==='suggest') enterSuggestPhase(data);
     else if(data.state==='vote') enterVotePhase(data);
     else if(data.state==='result') enterResultPhase(data);
+    else if(data.state==='reveal') enterRevealPhase(data);     // <-- NEU
     else if(data.state==='lobby') show('lobbyCard');
   });
   unsub.push(()=>roomRef(me.room).off('value', off2));
@@ -121,19 +129,18 @@ function renderPlayers(players){
   });
 }
 
-function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
+function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;","&gt;":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 
 // ===== Lobby Actions =====
 byId('btnReady').onclick = ()=> playersRef(me.room).child(me.id).update({ready:true});
 byId('btnUnready').onclick = ()=> playersRef(me.room).child(me.id).update({ready:false});
 
-// Host startet eine komplette „Session“ (Queue über alle Spieler)
 byId('btnStart').onclick = async ()=>{
   if(!me.isHost) return;
   const lines = byId('pool').value.split('\n').map(x=>x.trim()).filter(Boolean);
   const pool = lines.length? lines : DEFAULT_POOL;
   await setState(me.room, { pool });
-  await startSession(); // neu: ganze Reihenfolge erstellen
+  await startSession();
 };
 
 // ===== Queue/Session =====
@@ -143,7 +150,6 @@ async function startSession(){
   const readyPlayers = players.filter(p=>p.ready);
   if(readyPlayers.length < 3) return alert('Mindestens 3 Spieler (bereit).');
 
-  // zufällige Reihenfolge der Zielpersonen
   const queue = shuffle(readyPlayers.map(p=>p.id));
   const first = queue[0];
 
@@ -153,6 +159,8 @@ async function startSession(){
   updates[`rooms/${me.room}/targetId`] = first;
   updates[`rooms/${me.room}/queue`] = queue;
   updates[`rooms/${me.room}/queuePos`] = 0;
+  updates[`rooms/${me.room}/assignments`] = null; // frisch
+  updates[`rooms/${me.room}/endVotes`] = null;
   updates[`rooms/${me.room}/suggestsLocked`] = false;
   updates[`rooms/${me.room}/suggests`] = null;
   updates[`rooms/${me.room}/votes`] = null;
@@ -166,12 +174,10 @@ function enterSuggestPhase(data){
   const targetName = getPlayerName(target);
   byId('targetNameA').textContent = targetName||'(unbekannt)';
 
-  // Zielperson: sieht KEINE Vorschläge (geheime Liste)
   const sRef = roomRef(me.room).child('suggests');
   const off = sRef.on('value', snap=>{ renderSuggestList(snap.val()||{}, target); });
   unsub.push(()=>sRef.off('value', off));
 
-  // Eingabe/Buttons
   byId('btnSuggest').disabled = false;
   byId('suggestInput').value = '';
 
@@ -189,18 +195,12 @@ function enterSuggestPhase(data){
 
 function renderSuggestList(obj, targetId){
   const el = byId('suggestList'); el.innerHTML = '';
-
-  // Wenn ICH die Zielperson bin → keine Liste anzeigen
   if(me.id === targetId){
     el.innerHTML = '<div class="muted small">Du bist die Zielperson – Vorschläge bleiben für dich geheim.</div>';
     return;
   }
-
   const items = Object.values(obj);
-  if(items.length===0){
-    el.innerHTML = '<div class="muted small">Noch keine Vorschläge…</div>';
-    return;
-  }
+  if(items.length===0){ el.innerHTML = '<div class="muted small">Noch keine Vorschläge…</div>'; return; }
   items.sort((a,b)=>a.at-b.at).forEach(s=>{
     const div = document.createElement('div');
     div.className='player';
@@ -216,27 +216,20 @@ function enterVotePhase(data){
   const target = data.targetId;
   byId('targetNameB').textContent = getPlayerName(target)||'(unbekannt)';
   roomRef(me.room).child('suggests').get().then(snap=>{
-    renderVoteOptions(snap.val()||{}, target); // <-- target mitgeben
+    renderVoteOptions(snap.val()||{}, target);
   });
 }
 
 function renderVoteOptions(obj, targetId){
-  const el = byId('voteOptions'); 
-  el.innerHTML='';
-
+  const el = byId('voteOptions'); el.innerHTML='';
   const entries = Object.values(obj);
-  if(entries.length===0){
-    el.innerHTML = '<div class="muted small">Keine Vorschläge vorhanden.</div>';
-    return;
-  }
+  if(entries.length===0){ el.innerHTML = '<div class="muted small">Keine Vorschläge vorhanden.</div>'; return; }
 
-  // Zielperson: keine Optionen anzeigen, kein Voting erlauben
   if(me.id === targetId){
     el.innerHTML = '<div class="muted small">Du bist die Zielperson – das Voting ist für dich deaktiviert.</div>';
     return;
   }
 
-  // Optionen rendern (nur für Nicht-Zielperson)
   entries.forEach((s, idx)=>{
     const row = document.createElement('div');
     row.className='vote';
@@ -245,11 +238,7 @@ function renderVoteOptions(obj, targetId){
     const btn = document.createElement('button');
     btn.textContent='Stimme geben';
     btn.onclick = async ()=>{
-      // extra Guard: falls jemand trickst
-      if(me.id === targetId){ 
-        alert('Zielperson darf nicht abstimmen.'); 
-        return; 
-      }
+      if(me.id === targetId){ alert('Zielperson darf nicht abstimmen.'); return; }
       await roomRef(me.room).child('votes').child(me.id).set({ choiceIdx: idx, at: Date.now() });
       [...el.querySelectorAll('button')].forEach(b=>b.disabled=true);
     };
@@ -257,36 +246,38 @@ function renderVoteOptions(obj, targetId){
     el.appendChild(row);
   });
 
-  // Fertig, wenn alle außer Zielperson abgestimmt haben
   const off = playersRef(me.room).on('value', async snap=>{
     const players = Object.values(snap.val()||{});
     const eligibleVoters = players.filter(p=>p.id !== targetId).length;
-
     const vSnap = await roomRef(me.room).child('votes').get();
     const votes = vSnap.val()||{};
-    // Nur echte, eindeutige Stimmen zählen (exclude evtl. Zielperson/Fehleinträge)
     const uniqueVotes = Object.entries(votes).filter(([uid])=> uid !== targetId).length;
-
     if(uniqueVotes >= eligibleVoters){
-      tallyAndAdvance(entries); // wie gehabt
+      tallyAndAdvance(entries, targetId);
     }
   });
   unsub.push(()=>playersRef(me.room).off('value', off));
 }
 
-// ===== Tally + Auto-Advance =====
-async function tallyAndAdvance(entries){
+// ===== Tally + Save assignment + Auto-Advance =====
+async function tallyAndAdvance(entries, targetId){
   const vSnap = await roomRef(me.room).child('votes').get();
   const votes = Object.values(vSnap.val()||{});
   const counts = new Array(entries.length).fill(0);
   votes.forEach(v=>{ if(v && Number.isInteger(v.choiceIdx)) counts[v.choiceIdx]++; });
   let winIdx = 0, max=-1;
   counts.forEach((c,i)=>{ if(c>max){ max=c; winIdx=i; } });
+  const winnerText = entries[winIdx]?.text || '(keiner)';
 
-  // Ergebnis speichern (für Anzeige), aber danach automatisch weiter
-  await setState(me.room, { state:'result', result:{ winnerIdx: winIdx, counts, entries } });
+  // Ergebnis + Assignment speichern
+  const updates = {};
+  updates[`rooms/${me.room}/state`] = 'result';
+  updates[`rooms/${me.room}/result`] = { winnerIdx: winIdx, counts, entries };
+  updates[`rooms/${me.room}/assignments/${targetId}`] = winnerText;   // <-- map: ZielId -> Gewinner-Char
+  await db.ref().update(updates);
 }
 
+// ===== Result (pro Runde) =====
 function enterResultPhase(data){
   show('phaseResult');
   const res = data.result||{};
@@ -297,14 +288,10 @@ function enterResultPhase(data){
   const breakdown = (res.counts||[]).map((c,i)=>`<div>• ${escapeHtml(entries[i]?.text||'?')} – <b>${c}</b> Stimmen</div>`).join('');
   byId('voteBreakdown').innerHTML = breakdown;
 
-  // Buttons
   byId('btnNextRound').onclick = ()=> advanceNextTarget();
   byId('btnBackLobby').onclick = ()=> setState(me.room, { state:'lobby' });
 
-  // Auto-Weiter nach 2.5s (nur Host steuert)
-  if(me.isHost){
-    setTimeout(()=>advanceNextTarget(), 2500);
-  }
+  if(me.isHost){ setTimeout(()=>advanceNextTarget(), 2500); }
 }
 
 async function advanceNextTarget(){
@@ -313,7 +300,6 @@ async function advanceNextTarget(){
   const queue = data.queue||[];
   const pos = Number.isInteger(data.queuePos) ? data.queuePos : 0;
 
-  // nächster?
   if(pos+1 < queue.length){
     const nextId = queue[pos+1];
     const updates = {};
@@ -325,12 +311,60 @@ async function advanceNextTarget(){
     updates[`rooms/${me.room}/votes`] = null;
     await db.ref().update(updates);
   } else {
-    // fertig: zurück zur Lobby / neue Session möglich
-    await setState(me.room, { state:'lobby', targetId:null, queue:null, queuePos:null, result:null, suggests:null, votes:null, suggestsLocked:false });
+    // Fertig → Finale Reveal-Phase statt Lobby
+    await setState(me.room, {
+      state:'reveal',
+      result:null, suggests:null, votes:null, suggestsLocked:false
+    });
   }
 }
 
-// ===== Wire =====
-byId('btnHost').onclick = hostGame;
-byId('btnJoin').onclick = joinGame;
-window.addEventListener('error', (e)=>{ console.warn('JS Error:', e.message); });
+// ===== Finale Reveal =====
+function enterRevealPhase(data){
+  show('phaseReveal');
+
+  // Liste bauen: für alle Spieler, falls zu jemandem kein Assignment existiert → „(kein Vorschlag gewählt)“
+  const players = Object.values(playerMap||{}).sort((a,b)=>a.joinedAt-b.joinedAt);
+  const assignments = data.assignments || {};
+  const el = byId('revealList'); el.innerHTML='';
+
+  players.forEach(p=>{
+    const charText = assignments[p.id] || '(kein Vorschlag gewählt)';
+    const div = document.createElement('div');
+    div.className = 'player';
+    div.innerHTML = `<div><b>${escapeHtml(p.name)}</b></div>
+      <div class="small muted">ist</div>
+      <div style="margin-top:6px"><span class="badge">${escapeHtml(charText)}</span></div>`;
+    el.appendChild(div);
+  });
+
+  // Button „Spiel beenden“: jeder markiert sich in endVotes
+  byId('btnEndSession').onclick = async ()=>{
+    await roomRef(me.room).child('endVotes').child(me.id).set(true);
+  };
+
+  // Fortschritt anzeigen + Auto-Exit wenn alle bestätigt haben
+  const off = playersRef(me.room).on('value', async snap=>{
+    const pl = Object.values(snap.val()||{});
+    const total = pl.length;
+    const vSnap = await roomRef(me.room).child('endVotes').get();
+    const votes = vSnap.val()||{};
+    const count = Object.keys(votes).length;
+    byId('endInfo').textContent = `${count}/${total} haben beendet`;
+
+    if(count >= total && me.isHost){
+      await finishSessionToLobby();
+    }
+  });
+  unsub.push(()=>playersRef(me.room).off('value', off));
+}
+
+async function finishSessionToLobby(){
+  // Reset: zurück zur Lobby, aber Spieler & Pool bleiben bestehen
+  await setState(me.room, {
+    state:'lobby',
+    targetId:null, queue:null, queuePos:null,
+    assignments:null, endVotes:null,
+    result:null, suggests:null, votes:null, suggestsLocked:false
+  });
+}
