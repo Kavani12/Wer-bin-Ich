@@ -1,1 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wer bin ich? – Multiplayer</title>
 
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="titlebar">
+    <h1>🎭 Wer bin ich? – Multiplayer</h1>
+    <div id="roomPill" class="pill">Kein Raum</div>
+  </div>
+
+  <!-- Auth -->
+  <div class="card" id="authCard">
+    <div class="row">
+      <div class="col">
+        <label>Dein Name</label>
+        <input id="playerName" placeholder="z.B Norbert" maxlength="20"/>
+      </div>
+      <div class="col">
+        <label>Raum-ID</label>
+        <input id="roomId" placeholder="z.B. PIZZA42" maxlength="16"/>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnHost">Spiel hosten</button>
+      <button id="btnJoin" class="ghost">Beitreten</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Tipp: Kurze Raum-ID wählen und teilen.</div>
+  </div>
+
+  <!-- Lobby -->
+  <div class="card" id="lobbyCard" style="display:none">
+    <div class="row">
+      <div class="col">
+        <div class="badge">Lobby</div>
+        <h2 id="isHostTag" style="margin:6px 0 12px"></h2>
+        <div class="grid" id="players"></div>
+        <div class="state">
+          <button id="btnReady">Bereit</button>
+          <button id="btnUnready" class="ghost">Nicht bereit</button>
+          <span id="readyInfo" class="muted" style="margin-left:8px"></span>
+        </div>
+      </div>
+      <div class="col">
+        <label>Charakter-Pool (nur Host)</label>
+        <textarea id="pool" rows="10" placeholder="Jede Zeile ein Charakter (z.B. Angela Merkel, Spongebob, Harry Potter)"></textarea>
+        <div class="small muted" style="margin-top:6px">Wenn leer, wird ein Standard-Pool benutzt.</div>
+        <div class="sep"></div>
+        <button id="btnStart" disabled>Runde starten (Host)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vorschläge -->
+  <div class="card" id="phaseSuggest" style="display:none">
+    <div class="badge">Phase: Vorschläge</div>
+    The Zielperson ist <b><span id="targetNameA" class="mono"></span></b>.
+    <div class="muted small" style="margin:10px 0">Alle außer der Zielperson geben je <b>einen</b> Charakter-Vorschlag ab.</div>
+    <div class="row">
+      <div class="col">
+        <label>Dein Vorschlag</label>
+        <input id="suggestInput" placeholder="z.B. Sherlock Holmes" maxlength="40" />
+      </div>
+      <div class="col" style="align-self:end">
+        <button id="btnSuggest">Vorschlag senden</button>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div>
+      <div class="small muted">Eingegangene Vorschläge:</div>
+      <div id="suggestList" class="grid"></div>
+    </div>
+    <div class="sep"></div>
+    <div class="row">
+      <button id="btnLockSuggests" class="ghost">Host: Vorschlagsphase beenden</button>
+    </div>
+  </div>
+
+  <!-- Abstimmung -->
+  <div class="card" id="phaseVote" style="display:none">
+    <div class="badge">Phase: Abstimmung</div>
+    <h2>Abstimmen für <span id="targetNameB" class="mono"></span></h2>
+    <div class="grid" id="voteOptions"></div>
+    <div class="sep"></div>
+    <div class="small muted">Klicke auf deinen Favoriten. Zielperson darf (optional) auch mitvoten.</div>
+  </div>
+
+  <!-- Ergebnis -->
+  <div class="card" id="phaseResult" style="display:none">
+    <div class="badge">Ergebnis</div>
+    <h2><span id="winnerChar" class="mono"></span> gewinnt für <span id="targetNameC" class="mono"></span> 🎉</h2>
+    <div class="muted" id="voteBreakdown"></div>
+    <div class="sep"></div>
+    <div class="row">
+      <button id="btnNextRound">Nächste Runde</button>
+      <button id="btnBackLobby" class="ghost">Zurück zur Lobby</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="small muted">
+      Backend: Firebase Realtime Database. Für erste Tests DB-Regeln auf read/write = true, später härter machen.
+    </div>
+  </div>
+</div>
+
+<!-- App Code -->
+<script src="app.js" defer></script>
+</body>
+</html>
