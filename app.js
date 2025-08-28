@@ -17,6 +17,7 @@ const db = firebase.database();
 const $ = (s)=>document.querySelector(s);
 const byId = (id)=>document.getElementById(id);
 const uid = ()=> Math.random().toString(36).slice(2,10);
+const shuffle = (arr)=>{ const a=[...arr]; for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; };
 
 let me = { id: uid(), name: "", room: "", isHost: false };
 let unsub = [];
@@ -50,7 +51,11 @@ async function hostGame(){
 
   const rRef = roomRef(me.room);
   const now = Date.now();
-  await rRef.set({ createdAt: now, hostId: me.id, state: 'lobby', round: 0, targetId: null, pool: DEFAULT_POOL, suggestsLocked: false });
+  await rRef.set({
+    createdAt: now, hostId: me.id, state: 'lobby',
+    round: 0, targetId: null, pool: DEFAULT_POOL, suggestsLocked: false,
+    queue: null, queuePos: null
+  });
   await playersRef(me.room).child(me.id).set({ id: me.id, name: me.name, ready:false, joinedAt: now });
   enterLobby();
 }
@@ -67,8 +72,7 @@ async function joinGame(){
 
 function makeRoomId(){
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out='';
-  for(let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
+  let out=''; for(let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
   byId('roomId').value = out; return out;
 }
 
@@ -122,26 +126,33 @@ function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",
 // ===== Lobby Actions =====
 byId('btnReady').onclick = ()=> playersRef(me.room).child(me.id).update({ready:true});
 byId('btnUnready').onclick = ()=> playersRef(me.room).child(me.id).update({ready:false});
+
+// Host startet eine komplette „Session“ (Queue über alle Spieler)
 byId('btnStart').onclick = async ()=>{
-  if(me.isHost){
-    const lines = byId('pool').value.split('\n').map(x=>x.trim()).filter(Boolean);
-    const pool = lines.length? lines : DEFAULT_POOL;
-    await setState(me.room, { pool });
-  }
-  await startRound();
+  if(!me.isHost) return;
+  const lines = byId('pool').value.split('\n').map(x=>x.trim()).filter(Boolean);
+  const pool = lines.length? lines : DEFAULT_POOL;
+  await setState(me.room, { pool });
+  await startSession(); // neu: ganze Reihenfolge erstellen
 };
 
-async function startRound(){
+// ===== Queue/Session =====
+async function startSession(){
   const pSnap = await playersRef(me.room).get();
   const players = Object.values(pSnap.val()||{});
-  if(players.length<3) return alert('Mindestens 3 Spieler.');
   const readyPlayers = players.filter(p=>p.ready);
-  const target = readyPlayers[Math.floor(Math.random()*readyPlayers.length)];
+  if(readyPlayers.length < 3) return alert('Mindestens 3 Spieler (bereit).');
+
+  // zufällige Reihenfolge der Zielpersonen
+  const queue = shuffle(readyPlayers.map(p=>p.id));
+  const first = queue[0];
 
   const updates = {};
   updates[`rooms/${me.room}/round`] = firebase.database.ServerValue.increment(1);
   updates[`rooms/${me.room}/state`] = 'suggest';
-  updates[`rooms/${me.room}/targetId`] = target.id;
+  updates[`rooms/${me.room}/targetId`] = first;
+  updates[`rooms/${me.room}/queue`] = queue;
+  updates[`rooms/${me.room}/queuePos`] = 0;
   updates[`rooms/${me.room}/suggestsLocked`] = false;
   updates[`rooms/${me.room}/suggests`] = null;
   updates[`rooms/${me.room}/votes`] = null;
@@ -155,10 +166,12 @@ function enterSuggestPhase(data){
   const targetName = getPlayerName(target);
   byId('targetNameA').textContent = targetName||'(unbekannt)';
 
+  // Zielperson: sieht KEINE Vorschläge (geheime Liste)
   const sRef = roomRef(me.room).child('suggests');
   const off = sRef.on('value', snap=>{ renderSuggestList(snap.val()||{}, target); });
   unsub.push(()=>sRef.off('value', off));
 
+  // Eingabe/Buttons
   byId('btnSuggest').disabled = false;
   byId('suggestInput').value = '';
 
@@ -166,8 +179,7 @@ function enterSuggestPhase(data){
     const val = byId('suggestInput').value.trim();
     if(!val) return alert('Bitte einen Vorschlag eingeben.');
     if(me.id===target) return alert('Die Zielperson darf keinen Vorschlag abgeben.');
-    const key = me.id;
-    await roomRef(me.room).child('suggests').child(key).set({ by: me.id, text: val, at: Date.now() });
+    await roomRef(me.room).child('suggests').child(me.id).set({ by: me.id, text: val, at: Date.now() });
     byId('btnSuggest').disabled = true;
   };
 
@@ -177,8 +189,18 @@ function enterSuggestPhase(data){
 
 function renderSuggestList(obj, targetId){
   const el = byId('suggestList'); el.innerHTML = '';
+
+  // Wenn ICH die Zielperson bin → keine Liste anzeigen
+  if(me.id === targetId){
+    el.innerHTML = '<div class="muted small">Du bist die Zielperson – Vorschläge bleiben für dich geheim.</div>';
+    return;
+  }
+
   const items = Object.values(obj);
-  if(items.length===0){ el.innerHTML = '<div class="muted small">Noch keine Vorschläge…</div>'; return; }
+  if(items.length===0){
+    el.innerHTML = '<div class="muted small">Noch keine Vorschläge…</div>';
+    return;
+  }
   items.sort((a,b)=>a.at-b.at).forEach(s=>{
     const div = document.createElement('div');
     div.className='player';
@@ -199,7 +221,10 @@ function enterVotePhase(data){
 function renderVoteOptions(obj){
   const el = byId('voteOptions'); el.innerHTML='';
   const entries = Object.values(obj);
-  if(entries.length===0){ el.innerHTML = '<div class="muted small">Keine Vorschläge vorhanden.</div>'; return; }
+  if(entries.length===0){
+    el.innerHTML = '<div class="muted small">Keine Vorschläge vorhanden.</div>';
+    return;
+  }
 
   entries.forEach((s, idx)=>{
     const row = document.createElement('div');
@@ -219,22 +244,24 @@ function renderVoteOptions(obj){
     const players = Object.values(snap.val()||{});
     const vSnap = await roomRef(me.room).child('votes').get();
     const votes = vSnap.val()||{};
-    if(Object.keys(votes).length===players.length){ tallyAndFinish(entries); }
+    if(Object.keys(votes).length===players.length){ tallyAndAdvance(entries); }
   });
   unsub.push(()=>playersRef(me.room).off('value', off));
 }
 
-async function tallyAndFinish(entries){
+// ===== Tally + Auto-Advance =====
+async function tallyAndAdvance(entries){
   const vSnap = await roomRef(me.room).child('votes').get();
   const votes = Object.values(vSnap.val()||{});
   const counts = new Array(entries.length).fill(0);
   votes.forEach(v=>{ if(v && Number.isInteger(v.choiceIdx)) counts[v.choiceIdx]++; });
   let winIdx = 0, max=-1;
   counts.forEach((c,i)=>{ if(c>max){ max=c; winIdx=i; } });
+
+  // Ergebnis speichern (für Anzeige), aber danach automatisch weiter
   await setState(me.room, { state:'result', result:{ winnerIdx: winIdx, counts, entries } });
 }
 
-// ===== Result =====
 function enterResultPhase(data){
   show('phaseResult');
   const res = data.result||{};
@@ -244,12 +271,41 @@ function enterResultPhase(data){
   byId('targetNameC').textContent = getPlayerName(data.targetId)||'?';
   const breakdown = (res.counts||[]).map((c,i)=>`<div>• ${escapeHtml(entries[i]?.text||'?')} – <b>${c}</b> Stimmen</div>`).join('');
   byId('voteBreakdown').innerHTML = breakdown;
-  byId('btnNextRound').onclick = ()=> startRound();
+
+  // Buttons
+  byId('btnNextRound').onclick = ()=> advanceNextTarget();
   byId('btnBackLobby').onclick = ()=> setState(me.room, { state:'lobby' });
+
+  // Auto-Weiter nach 2.5s (nur Host steuert)
+  if(me.isHost){
+    setTimeout(()=>advanceNextTarget(), 2500);
+  }
+}
+
+async function advanceNextTarget(){
+  const snap = await roomRef(me.room).get();
+  const data = snap.val()||{};
+  const queue = data.queue||[];
+  const pos = Number.isInteger(data.queuePos) ? data.queuePos : 0;
+
+  // nächster?
+  if(pos+1 < queue.length){
+    const nextId = queue[pos+1];
+    const updates = {};
+    updates[`rooms/${me.room}/state`] = 'suggest';
+    updates[`rooms/${me.room}/targetId`] = nextId;
+    updates[`rooms/${me.room}/queuePos`] = pos+1;
+    updates[`rooms/${me.room}/suggestsLocked`] = false;
+    updates[`rooms/${me.room}/suggests`] = null;
+    updates[`rooms/${me.room}/votes`] = null;
+    await db.ref().update(updates);
+  } else {
+    // fertig: zurück zur Lobby / neue Session möglich
+    await setState(me.room, { state:'lobby', targetId:null, queue:null, queuePos:null, result:null, suggests:null, votes:null, suggestsLocked:false });
+  }
 }
 
 // ===== Wire =====
 byId('btnHost').onclick = hostGame;
 byId('btnJoin').onclick = joinGame;
 window.addEventListener('error', (e)=>{ console.warn('JS Error:', e.message); });
-
