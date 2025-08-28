@@ -280,17 +280,30 @@ async function tallyAndAdvance(entries, targetId){
 // ===== Result (pro Runde) =====
 function enterResultPhase(data){
   show('phaseResult');
-  const res = data.result||{};
-  const entries = res.entries||[];
-  const win = entries[res.winnerIdx] || { text:'(keiner)', by:'' };
-  byId('winnerChar').textContent = win.text;
-  byId('targetNameC').textContent = getPlayerName(data.targetId)||'?';
-  const breakdown = (res.counts||[]).map((c,i)=>`<div>• ${escapeHtml(entries[i]?.text||'?')} – <b>${c}</b> Stimmen</div>`).join('');
-  byId('voteBreakdown').innerHTML = breakdown;
 
+  const isTarget = me.id === data.targetId;
+
+  if (isTarget) {
+    // Zielperson: keine Details zeigen
+    byId('winnerChar').textContent = '??? (für dich geheim)';
+    byId('targetNameC').textContent = getPlayerName(data.targetId) || '?';
+    byId('voteBreakdown').innerHTML = '<div class="muted small">Das Ergebnis bleibt für dich versteckt. Warte kurz…</div>';
+  } else {
+    // Alle anderen: Ergebnis normal anzeigen
+    const res = data.result||{};
+    const entries = res.entries||[];
+    const win = entries[res.winnerIdx] || { text:'(keiner)', by:'' };
+    byId('winnerChar').textContent = win.text;
+    byId('targetNameC').textContent = getPlayerName(data.targetId)||'?';
+    const breakdown = (res.counts||[]).map((c,i)=>`<div>• ${escapeHtml(entries[i]?.text||'?')} – <b>${c}</b> Stimmen</div>`).join('');
+    byId('voteBreakdown').innerHTML = breakdown;
+  }
+
+  // Buttons bleiben gleich (kein Spoiler)
   byId('btnNextRound').onclick = ()=> advanceNextTarget();
   byId('btnBackLobby').onclick = ()=> setState(me.room, { state:'lobby' });
 
+  // Auto-Weiter steuert eh nur der Host
   if(me.isHost){ setTimeout(()=>advanceNextTarget(), 2500); }
 }
 
@@ -323,18 +336,23 @@ async function advanceNextTarget(){
 function enterRevealPhase(data){
   show('phaseReveal');
 
-  // Liste bauen: für alle Spieler, falls zu jemandem kein Assignment existiert → „(kein Vorschlag gewählt)“
   const players = Object.values(playerMap||{}).sort((a,b)=>a.joinedAt-b.joinedAt);
   const assignments = data.assignments || {};
   const el = byId('revealList'); el.innerHTML='';
 
   players.forEach(p=>{
-    const charText = assignments[p.id] || '(kein Vorschlag gewählt)';
+    const isMe = p.id === me.id;
+    const charText = assignments[p.id];
+
+    const shown = isMe
+      ? '(für dich geheim – frag die anderen 😉)'
+      : (charText || '(kein Vorschlag gewählt)');
+
     const div = document.createElement('div');
     div.className = 'player';
     div.innerHTML = `<div><b>${escapeHtml(p.name)}</b></div>
       <div class="small muted">ist</div>
-      <div style="margin-top:6px"><span class="badge">${escapeHtml(charText)}</span></div>`;
+      <div style="margin-top:6px"><span class="badge">${escapeHtml(shown)}</span></div>`;
     el.appendChild(div);
   });
 
@@ -359,12 +377,4 @@ function enterRevealPhase(data){
   unsub.push(()=>playersRef(me.room).off('value', off));
 }
 
-async function finishSessionToLobby(){
-  // Reset: zurück zur Lobby, aber Spieler & Pool bleiben bestehen
-  await setState(me.room, {
-    state:'lobby',
-    targetId:null, queue:null, queuePos:null,
-    assignments:null, endVotes:null,
-    result:null, suggests:null, votes:null, suggestsLocked:false
-  });
-}
+
