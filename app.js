@@ -215,24 +215,41 @@ function enterVotePhase(data){
   show('phaseVote');
   const target = data.targetId;
   byId('targetNameB').textContent = getPlayerName(target)||'(unbekannt)';
-  roomRef(me.room).child('suggests').get().then(snap=>{ renderVoteOptions(snap.val()||{}); });
+  roomRef(me.room).child('suggests').get().then(snap=>{
+    renderVoteOptions(snap.val()||{}, target); // <-- target mitgeben
+  });
 }
 
-function renderVoteOptions(obj){
-  const el = byId('voteOptions'); el.innerHTML='';
+function renderVoteOptions(obj, targetId){
+  const el = byId('voteOptions'); 
+  el.innerHTML='';
+
   const entries = Object.values(obj);
   if(entries.length===0){
     el.innerHTML = '<div class="muted small">Keine Vorschläge vorhanden.</div>';
     return;
   }
 
+  // Zielperson: keine Optionen anzeigen, kein Voting erlauben
+  if(me.id === targetId){
+    el.innerHTML = '<div class="muted small">Du bist die Zielperson – das Voting ist für dich deaktiviert.</div>';
+    return;
+  }
+
+  // Optionen rendern (nur für Nicht-Zielperson)
   entries.forEach((s, idx)=>{
     const row = document.createElement('div');
     row.className='vote';
-    row.innerHTML = `<div style="flex:1"><b>${escapeHtml(s.text)}</b><div class="small muted">von ${escapeHtml(getPlayerName(s.by)||'?')}</div></div>`;
+    row.innerHTML = `<div style="flex:1"><b>${escapeHtml(s.text)}</b>
+      <div class="small muted">von ${escapeHtml(getPlayerName(s.by)||'?')}</div></div>`;
     const btn = document.createElement('button');
     btn.textContent='Stimme geben';
     btn.onclick = async ()=>{
+      // extra Guard: falls jemand trickst
+      if(me.id === targetId){ 
+        alert('Zielperson darf nicht abstimmen.'); 
+        return; 
+      }
       await roomRef(me.room).child('votes').child(me.id).set({ choiceIdx: idx, at: Date.now() });
       [...el.querySelectorAll('button')].forEach(b=>b.disabled=true);
     };
@@ -240,11 +257,19 @@ function renderVoteOptions(obj){
     el.appendChild(row);
   });
 
+  // Fertig, wenn alle außer Zielperson abgestimmt haben
   const off = playersRef(me.room).on('value', async snap=>{
     const players = Object.values(snap.val()||{});
+    const eligibleVoters = players.filter(p=>p.id !== targetId).length;
+
     const vSnap = await roomRef(me.room).child('votes').get();
     const votes = vSnap.val()||{};
-    if(Object.keys(votes).length===players.length){ tallyAndAdvance(entries); }
+    // Nur echte, eindeutige Stimmen zählen (exclude evtl. Zielperson/Fehleinträge)
+    const uniqueVotes = Object.entries(votes).filter(([uid])=> uid !== targetId).length;
+
+    if(uniqueVotes >= eligibleVoters){
+      tallyAndAdvance(entries); // wie gehabt
+    }
   });
   unsub.push(()=>playersRef(me.room).off('value', off));
 }
