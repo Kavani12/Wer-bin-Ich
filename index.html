@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Wer bin ich? – Multiplayer</title>
 
-  <!-- Styles -->
   <link rel="stylesheet" href="style.css" />
 
   <!-- Firebase SDKs -->
@@ -15,7 +14,7 @@
 <body>
 <div class="wrap">
   <div class="titlebar">
-    <h1>🎭 Wer bin ich? – Multiplayer V=0.5</h1>
+    <h1>🎭 Wer bin ich? – Multiplayer V=0.6</h1>
     <div id="roomPill" class="pill">Kein Raum</div>
   </div>
 
@@ -64,7 +63,7 @@
   <!-- Vorschläge -->
   <div class="card" id="phaseSuggest" style="display:none">
     <div class="badge">Phase: Vorschläge</div>
-    The Zielperson ist <b><span id="targetNameA" class="mono"></span></b>.
+    Die Zielperson ist <b><span id="targetNameA" class="mono"></span></b>.
     <div class="muted small" style="margin:10px 0">Alle außer der Zielperson geben je <b>einen</b> Charakter-Vorschlag ab.</div>
     <div class="row">
       <div class="col">
@@ -92,10 +91,10 @@
     <h2>Abstimmen für <span id="targetNameB" class="mono"></span></h2>
     <div class="grid" id="voteOptions"></div>
     <div class="sep"></div>
-    <div class="small muted">Klicke auf deinen Favoriten. Zielperson darf (optional) auch mitvoten.</div>
+    <div class="small muted">Klicke auf deinen Favoriten. Zielperson darf nicht mitvoten.</div>
   </div>
 
-  <!-- Ergebnis -->
+  <!-- Ergebnis (pro Runde) -->
   <div class="card" id="phaseResult" style="display:none">
     <div class="badge">Ergebnis</div>
     <h2><span id="winnerChar" class="mono"></span> gewinnt für <span id="targetNameC" class="mono"></span> 🎉</h2>
@@ -107,6 +106,20 @@
     </div>
   </div>
 
+  <!-- NEU: Finale Reveal-Ansicht -->
+  <div class="card" id="phaseReveal" style="display:none">
+    <div class="badge">Wer ist wer?</div>
+    <div class="muted small" style="margin:6px 0 12px">
+      Finale Übersicht – die Runde endet, wenn alle auf <b>Spiel beenden</b> drücken.
+    </div>
+    <div id="revealList" class="grid"></div>
+    <div class="sep"></div>
+    <div class="row" style="align-items:center">
+      <button id="btnEndSession">Spiel beenden</button>
+      <span id="endInfo" class="muted" style="margin-left:8px"></span>
+    </div>
+  </div>
+
   <div class="card" style="margin-top:16px">
     <div class="small muted">
       Backend: Firebase Realtime Database. Für erste Tests DB-Regeln auf read/write = true, später härter machen.
@@ -114,7 +127,6 @@
   </div>
 </div>
 
-<!-- App Code -->
 <script src="app.js" defer></script>
 </body>
 </html>
