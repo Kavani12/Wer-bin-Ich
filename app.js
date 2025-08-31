@@ -280,13 +280,25 @@ async function tallyAndAdvance(entries, targetId){
 // ===== Result (pro Runde) =====
 function enterResultPhase(data){
   show('phaseResult');
-  const res = data.result||{};
-  const entries = res.entries||[];
-  const win = entries[res.winnerIdx] || { text:'(keiner)', by:'' };
-  byId('winnerChar').textContent = win.text;
-  byId('targetNameC').textContent = getPlayerName(data.targetId)||'?';
-  const breakdown = (res.counts||[]).map((c,i)=>`<div>• ${escapeHtml(entries[i]?.text||'?')} – <b>${c}</b> Stimmen</div>`).join('');
-  byId('voteBreakdown').innerHTML = breakdown;
+
+  const isTarget = me.id === data.targetId;
+  const targetName = getPlayerName(data.targetId) || '?';
+
+  if (isTarget) {
+    // 🔒 Für die Zielperson alles geheim halten
+    byId('winnerChar').textContent = '??? (für dich geheim)';
+    byId('targetNameC').textContent = targetName;
+    byId('voteBreakdown').innerHTML = '<div class="muted small">Das Ergebnis bleibt für dich versteckt. Warte kurz…</div>';
+  } else {
+    // ✅ Alle anderen sehen das echte Ergebnis
+    const res = data.result||{};
+    const entries = res.entries||[];
+    const win = entries[res.winnerIdx] || { text:'(keiner)', by:'' };
+    byId('winnerChar').textContent = win.text;
+    byId('targetNameC').textContent = targetName;
+    const breakdown = (res.counts||[]).map((c,i)=>`<div>• ${escapeHtml(entries[i]?.text||'?')} – <b>${c}</b> Stimmen</div>`).join('');
+    byId('voteBreakdown').innerHTML = breakdown;
+  }
 
   byId('btnNextRound').onclick = ()=> advanceNextTarget();
   byId('btnBackLobby').onclick = ()=> setState(me.room, { state:'lobby' });
@@ -323,27 +335,27 @@ async function advanceNextTarget(){
 function enterRevealPhase(data){
   show('phaseReveal');
 
-  // Liste bauen: für alle Spieler, falls zu jemandem kein Assignment existiert → „(kein Vorschlag gewählt)“
   const players = Object.values(playerMap||{}).sort((a,b)=>a.joinedAt-b.joinedAt);
   const assignments = data.assignments || {};
   const el = byId('revealList'); el.innerHTML='';
 
   players.forEach(p=>{
-    const charText = assignments[p.id] || '(kein Vorschlag gewählt)';
+    const isMe = p.id === me.id;
+    const charText = assignments[p.id];
+    const shown = isMe ? '(für dich geheim – frag die anderen 😉)' : (charText || '(kein Vorschlag gewählt)');
+
     const div = document.createElement('div');
     div.className = 'player';
     div.innerHTML = `<div><b>${escapeHtml(p.name)}</b></div>
       <div class="small muted">ist</div>
-      <div style="margin-top:6px"><span class="badge">${escapeHtml(charText)}</span></div>`;
+      <div style="margin-top:6px"><span class="badge">${escapeHtml(shown)}</span></div>`;
     el.appendChild(div);
   });
 
-  // Button „Spiel beenden“: jeder markiert sich in endVotes
   byId('btnEndSession').onclick = async ()=>{
     await roomRef(me.room).child('endVotes').child(me.id).set(true);
   };
 
-  // Fortschritt anzeigen + Auto-Exit wenn alle bestätigt haben
   const off = playersRef(me.room).on('value', async snap=>{
     const pl = Object.values(snap.val()||{});
     const total = pl.length;
@@ -351,10 +363,7 @@ function enterRevealPhase(data){
     const votes = vSnap.val()||{};
     const count = Object.keys(votes).length;
     byId('endInfo').textContent = `${count}/${total} haben beendet`;
-
-    if(count >= total && me.isHost){
-      await finishSessionToLobby();
-    }
+    if(count >= total && me.isHost){ await finishSessionToLobby(); }
   });
   unsub.push(()=>playersRef(me.room).off('value', off));
 }
