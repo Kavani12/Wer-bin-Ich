@@ -19,9 +19,19 @@ const byId = (id)=>document.getElementById(id);
 const uid = ()=> Math.random().toString(36).slice(2,10);
 const shuffle = (arr)=>{ const a=[...arr]; for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; };
 
-let me = { id: uid(), name: "", room: "", isHost: false };
-let unsub = [];
-let playerMap = {};
+// ALT:
+// let me = { id: uid(), name: "", room: "", isHost: false };
+
+// NEU:
+let me = { id: null, name: "", room: "", isHost: false };
+const TAB_KEY = 'wb_me_id';
+try {
+  const saved = sessionStorage.getItem(TAB_KEY);
+  me.id = saved || uid();
+  sessionStorage.setItem(TAB_KEY, me.id);
+} catch (e) {
+  me.id = uid(); // Fallback
+}
 
 const DEFAULT_POOL = [
   "Angela Merkel","Harry Potter","Darth Vader","Spongebob","Sherlock Holmes",
@@ -52,17 +62,26 @@ async function hostGame(){
   if(!me.name){ return alert('Bitte Namen eingeben.'); }
   me.isHost = true;
 
-  const rRef = roomRef(me.room);
   const now = Date.now();
-  await rRef.set({
-    createdAt: now, hostId: me.id, state: 'lobby',
-    round: 0, targetId: null, pool: DEFAULT_POOL,
+
+  // WICHTIG: update statt set (überschreibt NICHT players/)
+  await roomRef(me.room).update({
+    createdAt: now,
+    hostId: me.id,
+    state: 'lobby',
+    round: 0,
+    targetId: null,
+    pool: DEFAULT_POOL,
     suggestsLocked: false,
-    queue: null, queuePos: null,
-    assignments: null,        // <-- NEU: ZielId -> Gewinner-Charakter
-    endVotes: null            // <-- NEU: wer hat „Spiel beenden“ gedrückt
+    // queue/assignments/endVotes etc. werden NICHT angerührt
   });
-  await playersRef(me.room).child(me.id).set({ id: me.id, name: me.name, ready:false, joinedAt: now });
+
+  const myRef = playersRef(me.room).child(me.id);
+  await myRef.set({ id: me.id, name: me.name, ready:false, joinedAt: now });
+
+  // Presence: Eintrag beim Verlassen automatisch löschen
+  try { myRef.onDisconnect().remove(); } catch(e) {}
+
   enterLobby();
 }
 
@@ -71,8 +90,16 @@ async function joinGame(){
   me.room = byId('roomId').value.trim().toUpperCase();
   if(!me.name || !me.room){ return alert('Name und Raum-ID nötig.'); }
   me.isHost = false;
+
   const now = Date.now();
-  await playersRef(me.room).child(me.id).set({ id: me.id, name: me.name, ready:false, joinedAt: now });
+  const myRef = playersRef(me.room).child(me.id);
+
+  // set() ist hier okay – nur dein eigener Player-Node
+  await myRef.set({ id: me.id, name: me.name, ready:false, joinedAt: now });
+
+  // beim Tab schließen den Player automatisch entfernen
+  try { myRef.onDisconnect().remove(); } catch(e) {}
+
   enterLobby();
 }
 
